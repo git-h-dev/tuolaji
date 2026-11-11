@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>零件 / 螺帽 排列生成器</title>
+<style>
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "微软雅黑", Arial, sans-serif;
+    background: #2c3e50;
+    color: #ecf0f1;
+    margin: 0;
+    padding: 20px;
+  }
+  h1 { text-align: center; font-size: 22px; margin-bottom: 20px;}
+  .app {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .panel {
+    background: #34495e;
+    border-radius: 10px;
+    padding: 14px 16px;
+    min-width: 270px;
+  }
+  .panel h2 { font-size: 16px; margin: 0 0 8px; border-bottom: 1px solid #556; padding-bottom: 5px;}
+  .field { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; gap:8px;}
+  .field label { font-size: 14px; white-space: nowrap;}
+  .field input[type=number], .field select {
+    width: 76px;
+    padding: 3px 5px;
+    border-radius: 4px;
+    border: none;
+    text-align: center;
+  }
+  .field input[type=checkbox]{
+    width: 18px; height: 18px; cursor:pointer;
+    margin: 0;
+  }
+  .btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 8px;
+    background: #27ae60;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  .btn:hover { background: #2ecc71; }
+  .btn:disabled {
+    background: #218c54;
+    cursor: wait;
+    opacity: 0.9;
+  }
+  .btn:disabled:not(.loading) {
+    cursor: not-allowed;
+    background: #5d6d7e;
+  }
+  .btn.loading::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    vertical-align: -2px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: button-spin 0.7s linear infinite;
+  }
+  @keyframes button-spin {
+    to { transform: rotate(360deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn.loading::before { animation-duration: 1.8s; }
+  }
+  .capacity { font-size: 13px; margin-top: 10px; color: #bdc3c7;}
+  .capacity.over { color: #e74c3c; font-weight: bold;}
+
+  .board-wrap {
+    background: #1b2838;
+    border-radius: 10px;
+    padding: 16px;
+    max-width: 100%;
+  }
+  #gridContainer {
+    display: grid;
+    gap: 2px;
+    background: #000;
+    padding: 4px;
+    border-radius: 6px;
+  }
+  .cell {
+    width: var(--cell-size, 42px);
+    height: var(--cell-size, 42px);
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: #222;
+  }
+  .piece-outline {
+    position: absolute;
+    inset: -2px;
+    z-index: 1;
+    border: 0 solid #222;
+    pointer-events: none;
+  }
+  .bg-a { background: #e84393; }
+  .bg-b { background: #00cec9; }
+
+  .piece-label {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #111;
+    text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+    pointer-events: none;
+    border-radius: 3px;
+  }
+  .screw-icon {
+    font-size: 22px;
+    filter: drop-shadow(0 0 1px #000);
+    pointer-events: none;
+  }
+
+  #stats { margin-top: 16px; font-size: 13px; max-width: 600px;}
+  .table-scroll { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #stats table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  #stats th, #stats td {
+    border: 1px solid #556;
+    padding: 4px 8px;
+    text-align: center;
+  }
+  #stats th { background: #2c3e50; }
+  #legend { font-size: 12px; margin-top: 10px; color: #bdc3c7; line-height: 1.65;}
+  .warn { color:#f39c12; }
+  .best-result {
+    margin: 14px 0 0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #203d35;
+    color: #7ee2a8;
+    font-weight: bold;
+  }
+  .records-section {
+    width: 100%;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #556;
+  }
+  .records-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .records-header h2 {
+    margin: 0;
+    font-size: 15px;
+  }
+  .clear-records-button, .record-view-button {
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 5px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .clear-records-button { background: #c0392b; }
+  .clear-records-button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .records-note { margin: 8px 0; color: #bdc3c7; font-size: 12px; }
+  .record-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid rgba(189, 195, 199, 0.2);
+    font-size: 12px;
+  }
+  .record-item.active { color: #7ee2a8; }
+  .record-info { min-width: 0; }
+  .record-time { color: #bdc3c7; }
+  .record-view-button { flex: 0 0 auto; background: #2980b9; }
+  .records-empty { padding: 8px 0; color: #95a5a6; font-size: 12px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    h1 { font-size: 19px; line-height: 1.4; margin: 4px 0 14px; }
+    .app { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 12px; width: 100%; }
+    .panel, .board-wrap { width: 100%; min-width: 0; border-radius: 10px; }
+    .panel { padding: 12px; }
+    .panel h2 { font-size: 15px; margin-bottom: 7px; }
+    .field { min-height: 36px; margin: 5px 0; gap: 7px; }
+    .field label { font-size: 14px; }
+    .field input[type=number], .field select {
+      width: 82px;
+      min-height: 36px;
+      padding: 5px 6px;
+      font-size: 16px;
+    }
+    .field input[type=checkbox] { width: 22px; height: 22px; }
+    .btn { min-height: 44px; margin-top: 10px; padding: 7px; font-size: 16px; }
+    .board-wrap { padding: 10px; overflow: hidden; }
+    .cell { font-size: 10px; }
+    .piece-label { top: 1px; left: 2px; font-size: 9px; }
+    .screw-icon { font-size: clamp(14px, 5vw, 21px); }
+    #stats { max-width: 100%; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+    #stats th, #stats td { padding: 5px 7px; white-space: nowrap; }
+  }
+</style>
+</head>
+<body>
+
+<h1>零件 / 螺帽 排列生成器（总格 50）</h1>
+
+<div class="app">
+  <div class="panel">
+    <h2>参数设置</h2>
+
+    <div class="field">
+      <label for="gridCellCount">格子数量（1-50）</label>
+      <input type="number" id="gridCellCount" min="1" max="50" step="1" value="50" title="固定10列排列，最后一行只显示实际格子">
+    </div>
+
+    <div class="field">
+      <label>🔩 螺帽数量</label>
+      <input type="number" id="screwCount" min="0" value="14">
+    </div>
+
+    <h2>零件数量（每个占4格）</h2>
+    <div class="field"><label>L型</label><input type="number" id="countL" min="0" value="1"></div>
+    <div class="field"><label>反向L型</label><input type="number" id="countRL" min="0" value="2"></div>
+    <div class="field"><label>Z型</label><input type="number" id="countZ" min="0" value="0"></div>
+    <div class="field"><label>反向Z型</label><input type="number" id="countRZ" min="0" value="3"></div>
+    <div class="field"><label>田字型</label><input type="number" id="countO" min="0" value="1"></div>
+    <div class="field"><label>竖型</label><input type="number" id="countI" min="0" value="1"></div>
+    <div class="field"><label>T字型</label><input type="number" id="countT" min="0" value="1"></div>
+
+    <div class="capacity" id="capacityInfo"></div>
+
+    <button class="btn" id="generateButton" onclick="generate()">生成排列</button>
+  </div>
+
+  <div class="board-wrap">
+    <div id="gridContainer"></div>
+    <div id="bestResult" class="best-result" hidden></div>
+    <div id="stats"></div>
+    <section class="records-section">
+      <div class="records-header">
+        <h2>每次生成的最佳记录</h2>
+        <button class="clear-records-button" id="clearRecordsButton" type="button" onclick="clearGenerationRecords()">清除记录</button>
+      </div>
+      <p class="records-note" id="recordsNote"></p>
+      <div id="generationRecords"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+ * 0. 常量
+ * ===================================================================== */
+const GRID_ROWS = 5;
+const GRID_COLS = 10;
+const RUNS_PER_GENERATE = 10;       // 每次点击独立运行的次数（取最优）
+const ANNEAL_ITERATIONS = 30000;    // 每次运行的退火迭代数，越大结果越好、越慢
+
+const GENERATION_RECORDS_KEY = 'tractor-generator-best-records';
+const MAX_GENERATION_RECORDS = 30;
+
+const PIECE_SHAPES = {
+  L:  { name:'L型', rotations: [
+    [[0,0],[1,0],[2,0],[2,1]],
+    [[0,0],[0,1],[0,2],[1,0]],
+    [[0,0],[0,1],[1,1],[2,1]],
+    [[1,0],[1,1],[1,2],[0,2]]
+  ]},
+  RL: { name:'反向L型', rotations: [
+    [[0,1],[1,1],[2,1],[2,0]],
+    [[0,0],[1,0],[1,1],[1,2]],
+    [[0,0],[0,1],[1,0],[2,0]],
+    [[0,0],[0,1],[0,2],[1,2]]
+  ]},
+  Z:  { name:'Z型', rotations: [
+    [[0,0],[0,1],[1,1],[1,2]],
+    [[0,1],[1,0],[1,1],[2,0]]
+  ]},
+  RZ: { name:'反向Z型', rotations: [
+    [[0,1],[0,2],[1,0],[1,1]],
+    [[0,0],[1,0],[1,1],[2,1]]
+  ]},
+  O:  { name:'田字型', rotations: [
+    [[0,0],[0,1],[1,0],[1,1]]
+  ]},
+  I:  { name:'竖型', rotations: [
+    [[0,0],[1,0],[2,0],[3,0]],
+    [[0,0],[0,1],[0,2],[0,3]]
+  ]},
+  T:  { name:'T字型', rotations: [
+    [[0,0],[0,1],[0,2],[1,1]],
+    [[0,0],[1,0],[2,0],[1,1]],
+    [[1,0],[1,1],[1,2],[0,1]],
+    [[0,1],[1,0],[1,1],[2,1]]
+  ]}
+};
+
+const PIECE_COLORS = ['#ff7675','#74b9ff','#55efc4','#ffeaa7','#a29bfe',
+                      '#fab1a0','#81ecec','#fd79a8','#00cec9','#fdcb6e'];
+const pieceColor = id => PIECE_COLORS[id % PIECE_COLORS.length];
+
+/* =====================================================================
+ * 1. 通用工具
+ * ===================================================================== */
+const val = id => parseInt(document.getElementById(id).value) || 0;
+const randInt = n => Math.floor(Math.random() * n);
+
+function getGridCellCount(){
+  const n = parseInt(document.getElementById('gridCellCount').value, 10);
+  return Number.isFinite(n) ? Math.max(1, Math.min(GRID_ROWS * GRID_COLS, n)) : GRID_ROWS * GRID_COLS;
+}
+
+function shuffle(items){
+  for(let i = items.length - 1; i > 0; i--){
+    const j = randInt(i + 1);
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
+/** 字典序比较两个分数数组（容忍浮点误差） */
+function compareScores(a, b){
+  for(let i = 0; i < a.length; i++){
+    if(Math.abs(a[i] - b[i]) > 1e-9) return a[i] > b[i] ? 1 : -1;
+  }
+  return 0;
+}
+
+/* =====================================================================
+ * 2. 记录存储
+ * ===================================================================== */
+
+/** 按碰撞总和从大到小排序；总和相同时保持原顺序（新记录在前） */
+function sortGenerationRecords(records){
+  return records.slice().sort((a, b) => b.totalCollisions - a.totalCollisions);
+}
+
+const isRecordsFull = () => generationRecords.length >= MAX_GENERATION_RECORDS;
+let isGenerating = false;
+let recordsPersistenceAvailable = true;
+let activeRecordId = null;
+
+function loadGenerationRecords(){
+  try{
+    const records = JSON.parse(localStorage.getItem(GENERATION_RECORDS_KEY) || '[]');
+    return Array.isArray(records)
+      ? sortGenerationRecords(records.filter(r =>
+          r && Array.isArray(r.grid) && Array.isArray(r.placedPieces) &&
+          r.collisions && typeof r.totalCollisions === 'number'
+        )).slice(0, MAX_GENERATION_RECORDS)
+      : [];
+  }catch(error){
+    recordsPersistenceAvailable = false;
+    console.warn('读取生成记录失败', error);
+    return [];
+  }
+}
+let generationRecords = loadGenerationRecords();
+
+function persistGenerationRecords(){
+  try{
+    localStorage.setItem(GENERATION_RECORDS_KEY, JSON.stringify(generationRecords));
+    recordsPersistenceAvailable = true;
+  }catch(error){
+    recordsPersistenceAvailable = false;
+    console.error('保存生成记录失败', error);
+  }
+}
+
+/* =====================================================================
+ * 3. 棋盘模型（扁平索引 idx = r * cols + c）
+ *    owner[idx]: -2 = 不存在的格子, -1 = 空格, >=0 = 零件 id
+ * ===================================================================== */
+function createBoardContext(pieceList){
+  const rows = GRID_ROWS, cols = GRID_COLS, size = rows * cols;
+  const limit = getGridCellCount();
+
+  const exists = new Uint8Array(size);
+  const blankOwner = new Int16Array(size).fill(-2);
+  const cells = [];
+  for(let r = 0; r < rows; r++){
+    for(let c = 0; c < cols; c++){
+      if(c * rows + r < limit){          // 与原版一致：按列优先填充
+        const k = r * cols + c;
+        exists[k] = 1;
+        blankOwner[k] = -1;
+        cells.push(k);
+      }
+    }
+  }
+
+  // 每个格子存在的四邻
+  const nbrs = Array.from({length: size}, () => []);
+  for(const k of cells){
+    const r = Math.floor(k / cols), c = k % cols;
+    for(const [nr, nc] of [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]){
+      if(nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      if(exists[nr * cols + nc]) nbrs[k].push(nr * cols + nc);
+    }
+  }
+
+  // 预先枚举每种零件的所有合法放置（旋转 × 平移）
+  const placements = {};
+  for(const {type} of pieceList){
+    const list = [];
+    for(let r = 0; r < rows; r++){
+      for(let c = 0; c < cols; c++){
+        for(const rotation of PIECE_SHAPES[type].rotations){
+          const idx = [];
+          let ok = true;
+          for(const [dr, dc] of rotation){
+            const rr = r + dr, cc = c + dc;
+            if(rr >= rows || cc >= cols || !exists[rr * cols + cc]){ ok = false; break; }
+            idx.push(rr * cols + cc);
+          }
+          if(ok) list.push({cells: idx, r, c});
+        }
+      }
+    }
+    placements[type] = list;
+  }
+
+  return {rows, cols, size, exists, blankOwner, cells, nbrs, placements};
+}
+
+function expandPieces(pieceList){
+  const pieces = [];
+  for(const {type, count} of pieceList){
+    for(let i = 0; i < count; i++) pieces.push({id: pieces.length, type});
+  }
+  return pieces;
+}
+
+const isFree = (owner, cells) => cells.every(k => owner[k] === -1);
+const setOwner = (owner, cells, id) => { for(const k of cells) owner[k] = id; };
+
+/* =====================================================================
+ * 4. 目标函数：给定布局，K 颗螺帽能拿到的最大碰撞总和
+ *    空格价值 = 相邻的不同零件数；总和可加，所以取价值最高的 K 个空格即最优。
+ * ===================================================================== */
+function evaluate(ctx, owner, screwCount){
+  const hist = [0, 0, 0, 0, 0];
+  const {cells, nbrs} = ctx;
+  for(let a = 0; a < cells.length; a++){
+    const cell = cells[a];
+    if(owner[cell] !== -1) continue;
+    const nb = nbrs[cell];
+    let w = 0;
+    for(let i = 0; i < nb.length; i++){
+      const o = owner[nb[i]];
+      if(o < 0) continue;
+      let dup = false;
+      for(let j = 0; j < i; j++){
+        if(owner[nb[j]] === o){ dup = true; break; }
+      }
+      if(!dup) w++;
+    }
+    hist[w]++;
+  }
+  let remaining = screwCount, total = 0;
+  for(let w = 4; w > 0 && remaining > 0; w--){
+    const take = Math.min(remaining, hist[w]);
+    total += take * w;
+    remaining -= take;
+  }
+  return total;
+}
+
+/* =====================================================================
+ * 5. 初始布局：随机 DFS（带节点上限，多次重启）
+ * ===================================================================== */
+function buildInitialLayout(ctx, pieces){
+  const order = pieces.map((_, i) => i).sort(
+    (a, b) => ctx.placements[pieces[a].type].length - ctx.placements[pieces[b].type].length
+  );
+
+  for(let attempt = 0; attempt < 30; attempt++){
+    const owner = ctx.blankOwner.slice();
+    const cur = new Array(pieces.length);
+    let nodes = 0;
+
+    const dfs = k => {
+      if(k === order.length) return true;
+      if(++nodes > 3000) return false;
+      const i = order[k];
+      for(const p of shuffle(ctx.placements[pieces[i].type].slice())){
+        if(!isFree(owner, p.cells)) continue;
+        setOwner(owner, p.cells, i);
+        cur[i] = p;
+        if(dfs(k + 1)) return true;
+        setOwner(owner, p.cells, -1);
+        if(nodes > 3000) return false;
+      }
+      return false;
+    };
+
+    if(dfs(0)) return {owner, cur};
+  }
+  return null;
+}
+
+/* =====================================================================
+ * 6. 模拟退火：搜索使碰撞总和最大的零件布局
+ *    邻域：① 单个零件重新放置（附近 / 任意位置，含旋转）
+ *          ② 同时重放两个零件（用于在紧凑布局中交换位置）
+ * ===================================================================== */
+function randomPlacement(ctx, piece, old){
+  const list = ctx.placements[piece.type];
+  if(Math.random() < 0.4) return list[randInt(list.length)];
+  for(let t = 0; t < 12; t++){            // 倾向于在原位置附近微调
+    const p = list[randInt(list.length)];
+    if(Math.abs(p.r - old.r) + Math.abs(p.c - old.c) <= 2) return p;
+  }
+  return list[randInt(list.length)];
+}
+
+function proposeMove(ctx, pieces, cur){
+  const n = pieces.length;
+  const i = randInt(n);
+  const moves = [[i, randomPlacement(ctx, pieces[i], cur[i])]];
+  if(n > 1 && Math.random() < 0.25){
+    let j = randInt(n - 1);
+    if(j >= i) j++;
+    moves.push([j, randomPlacement(ctx, pieces[j], cur[j])]);
+  }
+  return moves;
+}
+
+/** 应用移动；失败则自动回滚并返回 null，成功返回旧放置用于撤销 */
+function applyMove(owner, cur, moves){
+  const olds = moves.map(([i]) => cur[i]);
+  for(const [i] of moves) setOwner(owner, cur[i].cells, -1);
+
+  let done = 0, ok = true;
+  for(const [i, p] of moves){
+    if(!isFree(owner, p.cells)){ ok = false; break; }
+    setOwner(owner, p.cells, i);
+    done++;
+  }
+  if(ok){
+    moves.forEach(([i, p]) => { cur[i] = p; });
+    return olds;
+  }
+  for(let k = 0; k < done; k++) setOwner(owner, moves[k][1].cells, -1);
+  moves.forEach(([i], k) => setOwner(owner, olds[k].cells, i));
+  return null;
+}
+
+function revertMove(owner, cur, moves, olds){
+  for(const [, p] of moves) setOwner(owner, p.cells, -1);
+  moves.forEach(([i], k) => {
+    cur[i] = olds[k];
+    setOwner(owner, olds[k].cells, i);
+  });
+}
+
+function anneal(ctx, pieces, init, screwCount, iterations = ANNEAL_ITERATIONS){
+  const {owner, cur} = init;
+  if(pieces.length === 0) return cur;
+
+  let score = evaluate(ctx, owner, screwCount);
+  let bestScore = score;
+  let bestCur = cur.slice();
+  const T0 = 1.2, T1 = 0.05;
+
+  for(let it = 0; it < iterations; it++){
+    const moves = proposeMove(ctx, pieces, cur);
+    const olds = applyMove(owner, cur, moves);
+    if(!olds) continue;
+
+    const next = evaluate(ctx, owner, screwCount);
+    const delta = next - score;
+    const temperature = T0 * Math.pow(T1 / T0, it / iterations);
+
+    if(delta >= 0 || Math.random() < Math.exp(delta / temperature)){
+      score = next;
+      if(score > bestScore){ bestScore = score; bestCur = cur.slice(); }
+    }else{
+      revertMove(owner, cur, moves, olds);
+    }
+  }
+  return bestCur;
+}
+
+/* =====================================================================
+ * 7. 螺帽放置：按价值从高到低取前 K 个（总和精确最优）
+ *    同价值时的次要规则：优先照顾碰撞数少的零件 → 尽量不挨着其他螺帽 → 随机
+ * ===================================================================== */
+function adjacentPieceIds(ctx, owner, cell){
+  const ids = new Set();
+  for(const n of ctx.nbrs[cell]){
+    if(owner[n] >= 0) ids.add(owner[n]);
+  }
+  return [...ids];
+}
+
+function placeScrews(ctx, owner, pieces, screwCount){
+  const screws = new Uint8Array(ctx.size);
+  const counts = new Array(pieces.length).fill(0);
+  let remaining = screwCount;
+
+  const candidates = ctx.cells
+    .filter(k => owner[k] === -1)
+    .map(cell => ({cell, ids: adjacentPieceIds(ctx, owner, cell)}));
+
+  for(let w = 4; w >= 0 && remaining > 0; w--){
+    const tier = candidates.filter(x => x.ids.length === w);
+    while(remaining > 0 && tier.length > 0){
+      let bestScore = null, best = [];
+      for(const x of tier){
+        const need = x.ids.reduce((s, id) => s + 1 / (1 + counts[id]), 0);
+        const apart = ctx.nbrs[x.cell].some(n => screws[n]) ? 0 : 1;
+        const score = [need, apart];
+        const cmp = bestScore ? compareScores(score, bestScore) : 1;
+        if(cmp > 0){ bestScore = score; best = [x]; }
+        else if(cmp === 0) best.push(x);
+      }
+      const chosen = best[randInt(best.length)];
+      screws[chosen.cell] = 1;
+      chosen.ids.forEach(id => counts[id]++);
+      tier.splice(tier.indexOf(chosen), 1);
+      remaining--;
+    }
+  }
+  return {screws, leftover: remaining};
+}
+
+/* =====================================================================
+ * 8. 结果构建 / 统计
+ * ===================================================================== */
+function createEmptyGrid(ctx){
+  return Array.from({length: ctx.rows}, (_, r) =>
+    Array.from({length: ctx.cols}, (_, c) =>
+      ctx.exists[r * ctx.cols + c] ? {pieceId: null, screw: false, type: null} : null
+    )
+  );
+}
+
+/** 每个零件碰撞的螺帽数（同一颗螺帽挨着同一零件多个格子只算一次） */
+function computeCollisions(grid, rows, cols, placedPieces){
+  const result = {};
+  for(const p of placedPieces){
+    const counted = new Set();
+    for(const [r, c] of p.cells){
+      for(const [nr, nc] of [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]){
+        if(nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+        if(grid[nr][nc] && grid[nr][nc].screw) counted.add(nr + ',' + nc);
+      }
+    }
+    result[p.id] = counted.size;
+  }
+  return result;
+}
+
+function buildResult(ctx, pieces, cur, screwCount){
+  const owner = ctx.blankOwner.slice();
+  cur.forEach((p, i) => setOwner(owner, p.cells, i));
+  const {screws, leftover} = placeScrews(ctx, owner, pieces, screwCount);
+
+  const grid = createEmptyGrid(ctx);
+  for(const k of ctx.cells){
+    const r = Math.floor(k / ctx.cols), c = k % ctx.cols;
+    const id = owner[k];
+    grid[r][c] = {
+      pieceId: id >= 0 ? id : null,
+      screw: screws[k] === 1,
+      type: id >= 0 ? pieces[id].type : null
+    };
+  }
+
+  const placedPieces = pieces.map((p, i) => ({
+    id: p.id,
+    type: p.type,
+    cells: cur[i].cells.map(k => [Math.floor(k / ctx.cols), k % ctx.cols])
+  }));
+  const collisions = computeCollisions(grid, ctx.rows, ctx.cols, placedPieces);
+  const values = placedPieces.map(p => collisions[p.id]);
+
+  return {
+    grid, placedPieces, collisions,
+    leftoverScrews: leftover,
+    failedPieces: [],
+    totalCollisions: values.reduce((a, b) => a + b, 0),
+    minCollision: values.length ? Math.min(...values) : 0
+  };
+}
+
+function solveOnce(ctx, pieces, screwCount){
+  const init = buildInitialLayout(ctx, pieces);
+  if(!init) return null;
+  const cur = anneal(ctx, pieces, init, screwCount);
+  return buildResult(ctx, pieces, cur, screwCount);
+}
+
+function makeFailedResult(ctx, pieceList){
+  return {
+    grid: createEmptyGrid(ctx),
+    placedPieces: [],
+    collisions: {},
+    leftoverScrews: 0,
+    failedPieces: pieceList.map(({type, count}) => ({type, count})),
+    totalCollisions: 0,
+    minCollision: 0
+  };
+}
+
+/** 总和优先，总和相同时取“最差零件”更好的 */
+function isBetterResult(a, b){
+  if(!b) return true;
+  return compareScores([a.totalCollisions, a.minCollision], [b.totalCollisions, b.minCollision]) > 0;
+}
+
+/* =====================================================================
+ * 9. 渲染
+ * ===================================================================== */
+function updateCapacityInfo(){
+  const total = getGridCellCount();
+  const screw = val('screwCount');
+  const pieceTotal = ['countL','countRL','countZ','countRZ','countO','countI','countT']
+    .reduce((s, id) => s + val(id), 0) * 4;
+  const used = screw + pieceTotal;
+  const info = document.getElementById('capacityInfo');
+  info.textContent = `容量: ${total} 格（固定10列） | 已请求: ${used} 格 (零件${pieceTotal} + 螺帽${screw})`;
+  info.className = 'capacity' + (used > total ? ' over' : '');
+}
+document.querySelectorAll('input,select').forEach(el => el.addEventListener('input', updateCapacityInfo));
+updateCapacityInfo();
+
+let lastRender = null;
+
+function isSamePiece(grid, r1, c1, r2, c2, rows, cols){
+  if(r2 < 0 || r2 >= rows || c2 < 0 || c2 >= cols) return false;
+  if(!grid[r2][c2]) return false;
+  return grid[r1][c1].pieceId === grid[r2][c2].pieceId;
+}
+
+function renderGrid(grid, rows, cols, placedPieces){
+  lastRender = {grid, rows, cols, placedPieces};
+  const container = document.getElementById('gridContainer');
+  container.innerHTML = '';
+
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
+  const availableWidth = isMobile ? document.documentElement.clientWidth - 48 : 620;
+  const cellSize = Math.max(18, Math.min(48, Math.floor((availableWidth - (cols - 1) * 2 - 8) / cols)));
+  container.style.setProperty('--cell-size', `${cellSize}px`);
+  container.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+  container.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
+
+  const pieceById = new Map(placedPieces.map(p => [p.id, p]));
+
+  for(let c = 0; c < cols; c++){
+    for(let r = 0; r < rows; r++){
+      const cellData = grid[r][c];
+      if(!cellData) continue;
+
+      const div = document.createElement('div');
+      div.className = 'cell';
+      div.style.gridColumn = String(c + 1);
+      div.style.gridRow = String(r + 1);
+
+      if(cellData.pieceId === null){
+        div.classList.add((r + c) % 2 === 0 ? 'bg-a' : 'bg-b');
+        if(cellData.screw){
+          const icon = document.createElement('span');
+          icon.className = 'screw-icon';
+          icon.textContent = '🔩';
+          div.appendChild(icon);
+        }
+      }else{
+        div.style.background = pieceColor(cellData.pieceId);
+
+        const outline = document.createElement('span');
+        outline.className = 'piece-outline';
+        const edge = (dr, dc) => isSamePiece(grid, r, c, r + dr, c + dc, rows, cols) ? '0' : '2px';
+        outline.style.borderTopWidth = edge(-1, 0);
+        outline.style.borderBottomWidth = edge(1, 0);
+        outline.style.borderLeftWidth = edge(0, -1);
+        outline.style.borderRightWidth = edge(0, 1);
+        div.appendChild(outline);
+
+        if(pieceById.has(cellData.pieceId)){
+          const label = document.createElement('span');
+          label.className = 'piece-label';
+          label.textContent = `#${cellData.pieceId + 1}`;
+          div.appendChild(label);
+        }
+      }
+      container.appendChild(div);
+    }
+  }
+}
+
+window.addEventListener('resize', () => {
+  if(lastRender) renderGrid(lastRender.grid, lastRender.rows, lastRender.cols, lastRender.placedPieces);
+});
+
+function renderStats(result){
+  const {placedPieces, collisions, failedPieces = [], leftoverScrews = 0} = result;
+  let html = '';
+
+  if(leftoverScrews > 0){
+    html += `<p class="warn">⚠ 有 ${leftoverScrews} 颗螺帽因格子不足未能放置。</p>`;
+  }
+  if(failedPieces.length > 0){
+    html += `<p style="color:#e74c3c;">⚠ 无法完整摆放全部零件，已停止生成（未摆放螺帽）：` +
+      failedPieces.map(f => `${PIECE_SHAPES[f.type].name}×${f.count}`).join('，') +
+      `。请增加格子或减少零件数量。</p>`;
+  }
+
+  html += '<div class="table-scroll"><table><tr><th>编号</th><th>类型</th><th>碰撞螺帽数(上下左右)</th></tr>';
+  [...placedPieces].sort((a, b) => a.id - b.id).forEach(p => {
+    html += `<tr><td>#${p.id + 1}</td><td>${PIECE_SHAPES[p.type].name}</td><td>${collisions[p.id]}</td></tr>`;
+  });
+  const total = placedPieces.reduce((s, p) => s + collisions[p.id], 0);
+  html += `<tr><th colspan="2">碰撞螺帽数总和</th><th>${total}</th></tr>`;
+  html += '</table></div>';
+
+  document.getElementById('stats').innerHTML = html;
+}
+
+function displayResult(result, labelText){
+  renderGrid(result.grid, result.rows, result.cols, result.placedPieces);
+  renderStats(result);
+  const label = document.getElementById('bestResult');
+  label.hidden = false;
+  label.textContent = labelText;
+}
+
+/* =====================================================================
+ * 10. 记录列表
+ * ===================================================================== */
+function updateGenerateButtonState(){
+  if(isGenerating) return;                 // 生成中由 generate() 自己管理
+  const button = document.getElementById('generateButton');
+  const full = isRecordsFull();
+  button.disabled = full;
+  button.textContent = full
+    ? `记录已满（${MAX_GENERATION_RECORDS}/${MAX_GENERATION_RECORDS}），请先清除记录`
+    : '生成排列';
+}
+
+function renderGenerationRecords(){
+  const container = document.getElementById('generationRecords');
+  const clearButton = document.getElementById('clearRecordsButton');
+  const note = document.getElementById('recordsNote');
+  container.innerHTML = '';
+  clearButton.disabled = generationRecords.length === 0;
+  updateGenerateButtonState();
+
+  note.textContent = !recordsPersistenceAvailable
+    ? '浏览器本地存储不可用，记录仅保存在当前页面。'
+    : isRecordsFull()
+      ? `记录已满 ${MAX_GENERATION_RECORDS} 条，需手动清除记录后才能继续生成。列表按总和从高到低排列。`
+      : `每次生成 ${RUNS_PER_GENERATE} 次，仅保存碰撞螺帽数总和最高的结果，列表按总和从高到低排列（最多 ${MAX_GENERATION_RECORDS} 条）。`;
+
+  if(generationRecords.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'records-empty';
+    empty.textContent = '暂无生成记录';
+    container.appendChild(empty);
+    return;
+  }
+
+  generationRecords.forEach(record => {
+    const row = document.createElement('div');
+    row.className = 'record-item' + (record.id === activeRecordId ? ' active' : '');
+
+    const info = document.createElement('div');
+    info.className = 'record-info';
+    const title = document.createElement('div');
+    title.textContent = `碰撞螺帽数总和：${record.totalCollisions}`;
+    const time = document.createElement('div');
+    time.className = 'record-time';
+    time.textContent = record.createdAt;
+    info.append(title, time);
+
+    const button = document.createElement('button');
+    button.className = 'record-view-button';
+    button.type = 'button';
+    button.textContent = '查看';
+    button.addEventListener('click', () => showGenerationRecord(record.id));
+
+    row.append(info, button);
+    container.appendChild(row);
+  });
+}
+
+function showGenerationRecord(recordId){
+  const record = generationRecords.find(item => item.id === recordId);
+  if(!record) return;
+  activeRecordId = record.id;
+  displayResult(record, `历史最佳记录（${record.createdAt}）：碰撞螺帽数总和 ${record.totalCollisions}`);
+  renderGenerationRecords();
+}
+
+function clearGenerationRecords(){
+  if(generationRecords.length === 0) return;
+  if(!window.confirm('确定清除全部生成记录吗？')) return;
+  try{
+    localStorage.removeItem(GENERATION_RECORDS_KEY);
+  }catch(error){
+    console.error('清除生成记录失败', error);
+    window.alert('清除失败，请检查浏览器存储设置后重试。');
+    return;
+  }
+  generationRecords = [];
+  activeRecordId = null;
+  recordsPersistenceAvailable = true;
+  renderGenerationRecords();
+}
+
+/* =====================================================================
+ * 11. 主流程
+ * ===================================================================== */
+function readParams(){
+  const counts = {
+    L: val('countL'), RL: val('countRL'), Z: val('countZ'), RZ: val('countRZ'),
+    O: val('countO'), I: val('countI'), T: val('countT')
+  };
+  const pieceList = Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([type, count]) => ({type, count}));
+  return {
+    pieceList,
+    screwCount: val('screwCount'),
+    totalPieceCells: pieceList.reduce((s, p) => s + p.count * 4, 0)
+  };
+}
+
+const nextFrame = () => new Promise(resolve => setTimeout(resolve, 0));
+
+async function generate(runCount = RUNS_PER_GENERATE, saveRecord = true){
+  if(isGenerating) return;
+
+  // 记录已满：必须先手动清除
+  if(saveRecord && isRecordsFull()){
+    window.alert(`记录已满 ${MAX_GENERATION_RECORDS} 条，请先点击"清除记录"后再生成。`);
+    return;
+  }
+
+  const button = document.getElementById('generateButton');
+  isGenerating = true;
+  button.disabled = true;
+  button.classList.add('loading');
+  button.setAttribute('aria-busy', 'true');
+
+  try{
+    const {pieceList, screwCount, totalPieceCells} = readParams();
+    const ctx = createBoardContext(pieceList);
+    const pieces = expandPieces(pieceList);
+    const totalCapacity = getGridCellCount();
+
+    let best = null;
+    let failed = totalPieceCells > totalCapacity;
+
+    if(!failed){
+      for(let run = 1; run <= runCount; run++){
+        button.textContent = `生成中（${run}/${runCount}）`;
+        await nextFrame();
+
+        const result = solveOnce(ctx, pieces, screwCount);
+        if(!result){ failed = !best; break; }
+        if(isBetterResult(result, best)) best = result;
+      }
+    }
+
+    if(!best){
+      best = makeFailedResult(ctx, pieceList);
+      saveRecord = false;                 // 失败结果不写入历史
+    }
+
+    const result = {
+      ...best,
+      rows: GRID_ROWS,
+      cols: GRID_COLS,
+      screwCount,
+      totalCapacity,
+      totalPieceCells
+    };
+
+    if(saveRecord){
+      result.id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      result.createdAt = new Date().toLocaleString('zh-CN');
+      // 未满 30 条，一定能入列；不再截断
+      generationRecords = sortGenerationRecords([result, ...generationRecords]);
+      activeRecordId = result.id;
+      persistGenerationRecords();
+    }
+
+    displayResult(
+      result,
+      saveRecord
+        ? `本次 ${runCount} 次生成的最佳结果：碰撞螺帽数总和 ${result.totalCollisions}`
+        : `初始排列：碰撞螺帽数总和 ${result.totalCollisions}`
+    );
+    if(saveRecord) renderGenerationRecords();
+  }finally{
+    isGenerating = false;
+    button.classList.remove('loading');
+    button.removeAttribute('aria-busy');
+    updateGenerateButtonState();          // 满 30 条则保持禁用并显示提示
+  }
+}
+
+renderGenerationRecords();
+generate(1, false);
+</script>
+</body>
+</html>
